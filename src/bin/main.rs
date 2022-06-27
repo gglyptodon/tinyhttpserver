@@ -1,9 +1,8 @@
-use std::{fs, thread};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
+use std::{fs, thread};
 use tinyhttpserver::ThreadPool;
-
 
 fn main() {
     let address = "::1:8887";
@@ -20,10 +19,14 @@ fn main() {
 }
 
 fn handle_connection(mut stream: TcpStream) {
-    let template = |status:&str, template_file_as_string:String| {
-        format!("{}Content-Length:{}\r\n\r\n{}",
-                status, template_file_as_string.len(),
-                template_file_as_string)};
+    let template = |status: &str, template_file_as_string: String| {
+        format!(
+            "{}Content-Length:{}\r\n\r\n{}",
+            status,
+            template_file_as_string.len(),
+            template_file_as_string
+        )
+    };
     let mut buffer = [0u8; 1024];
     stream.read(&mut buffer).unwrap();
     let get_root = b"GET / HTTP/1.1\r\n";
@@ -36,14 +39,12 @@ fn handle_connection(mut stream: TcpStream) {
     } else if buffer.starts_with(get_sleep) {
         thread::sleep(Duration::from_secs(5));
         (html_ok, "zzz.htm")
-    }
-    else {
+    } else {
         (html_file_not_found, "404.htm")
     };
-    let html_file = fs::read_to_string(filename).expect(&*format!("Failed to read template {}", filename));
+    let html_file =
+        fs::read_to_string(filename).expect(&*format!("Failed to read template {}", filename));
     let response = template(status_line, html_file);
     stream.write(response.as_bytes()).unwrap();
     stream.flush().unwrap();
-
 }
-
