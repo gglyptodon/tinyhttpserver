@@ -10,7 +10,7 @@ fn main() {
     let listener = TcpListener::bind(address).expect(&*format!("cannot bind to {}", address));
     println!("Running on {}\n", address);
     let pool = ThreadPool::new(4);
-    for stream in listener.incoming() {
+    for stream in listener.incoming(){
         let stream = stream.unwrap();
         pool.execute(|| {
             handle_connection(stream);

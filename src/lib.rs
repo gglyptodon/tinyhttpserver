@@ -1,14 +1,17 @@
-use std::alloc::handle_alloc_error;
 use std::sync::mpsc::Receiver;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
+enum Message{
+    NewJob(Job),
+    Terminate,
+}
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: mpsc::Sender<Message>,
 }
 
 impl ThreadPool {
@@ -35,22 +38,47 @@ impl ThreadPool {
         F: FnOnce() + Send + 'static,
     {
         let job = Box::new(job_fn);
-        self.sender.send(job).unwrap();
+        self.sender.send(Message::NewJob(job)).unwrap();
     }
 }
 
+impl Drop for ThreadPool{
+    fn drop(&mut self) {
+        for _ in &mut self.workers{
+            println!("Sending shutdown message");
+            self.sender.send(Message::Terminate).unwrap();
+        }
+        for worker in &mut self.workers{
+            println!("terminating worker {}", worker.id);
+            if let Some(handle) = worker.handle.take(){
+                handle.join().unwrap();
+            }
+        }
+    }
+}
+
+
 pub struct Worker {
     id: usize,
-    handle: thread::JoinHandle<()>,
+    handle: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<Receiver<Job>>>) -> Self {
+    fn new(id: usize, receiver: Arc<Mutex<Receiver<Message>>>) -> Self {
         let handle = thread::spawn(move || loop {
-            let job = receiver.lock().unwrap().recv().unwrap();
-            println!("worker {} got job", id);
-            job();
+            let message = receiver.lock().unwrap().recv().unwrap();
+            match message {
+                Message::NewJob(j) =>{
+                    println!("worker {} got job", id); j();
+                },
+                Message::Terminate => {
+                    println!("worker {} terminating", id);
+                    break;
+                },
+            }
+            //let job = receiver.lock().unwrap().recv().unwrap();
+
         });
-        Self { id, handle }
+        Self { id, handle: Some(handle) }
     }
 }
