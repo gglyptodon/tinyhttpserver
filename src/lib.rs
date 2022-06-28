@@ -1,7 +1,10 @@
-use std::sync::{Arc, mpsc, Mutex};
+use std::alloc::handle_alloc_error;
 use std::sync::mpsc::Receiver;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
+
+type Job = Box<dyn FnOnce() + Send + 'static>;
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -27,26 +30,27 @@ impl ThreadPool {
         }
         ThreadPool { workers, sender }
     }
-    pub fn execute<F>(&self, f: F)
+    pub fn execute<F>(&self, job_fn: F)
     where
         F: FnOnce() + Send + 'static,
     {
+        let job = Box::new(job_fn);
+        self.sender.send(job).unwrap();
     }
 }
 
 pub struct Worker {
     id: usize,
     handle: thread::JoinHandle<()>,
-    //receiver: mpsc::Receiver<Job>
 }
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<Receiver<Job>>>) -> Self {
-        let handle = thread::spawn(|| {
-            receiver;
+        let handle = thread::spawn(move || loop {
+            let job = receiver.lock().unwrap().recv().unwrap();
+            println!("worker {} got job", id);
+            job();
         });
-        Worker { id, handle }
+        Self { id, handle }
     }
 }
-
-struct Job;
